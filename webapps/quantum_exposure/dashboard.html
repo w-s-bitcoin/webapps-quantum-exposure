@@ -19,7 +19,6 @@
 
       const params = new URLSearchParams(window.location.search);
       const isCardPreview = params.get('preview') === 'card';
-      const isStandaloneLaunch = params.get('standalone') === '1';
       const isLocalRuntime = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
       const isLiteMode = !isLocalRuntime;
 
@@ -28,8 +27,7 @@
       if (
         window.location.hostname === 'localhost' &&
         window.self === window.top &&
-        !isCardPreview &&
-        !isStandaloneLaunch
+        !isCardPreview
       ) {
         const redirectedPath = window.location.pathname.replace(
           /\/webapps\/quantum_exposure\/dashboard\.html$/,
@@ -1855,7 +1853,7 @@
           class="runtime-mode-btn"
           type="button"
           aria-pressed="true"
-          data-tooltip="ECO mode is locked on deployed sites for faster loading. FULL mode is only available when running locally."
+          data-tooltip="ECO mode is locked on deployed sites for faster loading. FULL mode is only available when running this webapp locally."
         >
           ECO
         </button>

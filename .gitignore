@@ -36,3 +36,6 @@ arkham/
 
 # Large reference data (for build pipeline only)
 arkham_btc_identity_lookup.json
+
+# Archived snapshots are retained locally but excluded from standalone commits
+webapps/quantum_exposure/webapp_data/archived/
