@@ -110,12 +110,13 @@ function updateRuntimeModeButton() {
   const lite = isLiteMode();
   const modeLabel = lite ? "ECO" : "FULL";
   modeButton.textContent = modeLabel;
+  modeButton.setAttribute("aria-label", lite ? "Runtime mode: ECO" : "Runtime mode: FULL");
   modeButton.setAttribute("aria-pressed", lite ? "true" : "false");
   modeButton.classList.toggle("is-eco", lite);
   modeButton.classList.toggle("is-full", !lite);
 
   const tooltipLocal = "Toggle between ECO mode and FULL mode";
-  const tooltipOnline = "ECO mode is locked on deployed sites for faster loading. FULL mode is only available when running locally.";
+  const tooltipOnline = "ECO mode is locked on deployed sites for faster loading. FULL mode is only available when running this webapp locally.";
   const tooltip = IS_LOCAL_RUNTIME ? tooltipLocal : tooltipOnline;
 
   setCustomTooltip(modeButton, tooltip);
@@ -3266,11 +3267,13 @@ function updateResetButtonUi() {
   if (state.preResetStateSnapshot) {
     btn.textContent = "Undo Restore";
     btn.classList.add("reset-dashboard-btn--undo");
+    btn.setAttribute("aria-label", "Undo the last restore defaults action");
     setCustomTooltip(btn, "Undo the last restore defaults action");
     btn.disabled = false;
   } else {
     btn.textContent = "Restore Defaults";
     btn.classList.remove("reset-dashboard-btn--undo");
+    btn.setAttribute("aria-label", "Restore dashboard defaults");
     setCustomTooltip(btn, "Reset dashboard to defaults");
     btn.disabled = isDefaultFilterState();
   }
