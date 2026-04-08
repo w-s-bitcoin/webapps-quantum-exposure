@@ -63,6 +63,7 @@ const THEME_STORAGE_KEY = "quantum-research-dashboard-theme";
 const RUNTIME_MODE_STORAGE_KEY = "quantum-research-dashboard-runtime-mode-v1";
 const FILTERS_STORAGE_KEY = "quantum-research-dashboard-filters-v1";
 const HISTORICAL_GE1_CACHE_STORAGE_KEY = "quantum-research-historical-ge1-v1";
+const AUTO_UPDATE_STORAGE_KEY = "quantum-standalone-auto-update-v1";
 const SNAPSHOT_PREF_LATEST = "latest";
 const SNAPSHOT_PREF_SPECIFIC = "specific";
 const ALLOWED_BALANCE_FILTERS = new Set(["all", "ge1", "ge10", "ge100", "ge1000"]);
@@ -72,7 +73,26 @@ const ALLOWED_SUPPLY_DISPLAY_MODES = new Set(["total", "exposed", "filtered"]);
 const SHARE_NONE_TOKEN = "__none__";
 const LOCAL_RUNTIME_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 const IS_LOCAL_RUNTIME = LOCAL_RUNTIME_HOSTS.has(window.location.hostname);
+const DASHBOARD_URL_PARAMS = new URLSearchParams(window.location.search);
+const IS_STANDALONE_RUNTIME = DASHBOARD_URL_PARAMS.get("standalone") === "1";
+const STANDALONE_PREFS_ENDPOINT = "/__standalone__/prefs";
 let runtimeLiteMode = true;
+let autoUpdateEnabled = true;
+
+const ICONS = {
+  runtimeEco: '<svg class="icon-fill" viewBox="0 0 48 48" focusable="false" aria-hidden="true"><path d="M31.197 33.609c-3.86 3.313-10.505 4.373-16.005.214 1.282-2.014 6.075-8.804 14.26-12.078l-.556-1.393c-7.977 3.191-12.782 9.372-14.573 12.047-1.513-3.531-1.792-6.971-.775-10.021.947-2.846 2.998-5.146 5.774-6.477 3.986-1.91 6.896-2.212 9.977-2.531 2.933-.304 5.949-.616 9.79-2.346-.387 6.263-2.22 17.714-7.892 22.585zm8.749-26.372c-4.455 2.475-7.613 2.803-10.957 3.149-3.199.331-6.508.675-10.963 2.81-3.516 1.684-6.118 4.609-7.325 8.234-1.316 3.954-.899 8.355 1.16 12.788-2.209 2.801-4.268 6.68-4.861 7.83h3.402c.816-1.487 2.102-3.694 3.441-5.486 2.951 2.087 6.151 2.986 9.209 2.986 3.858 0 7.489-1.421 10.099-3.664 7.137-6.128 9.023-20.56 9.023-27.336V6l-2.228 1.237z"></path></svg>',
+  runtimeFull: '<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M14 8V5"></path><path d="M11 5H17"></path><path d="M6 12H3"></path><path d="M3 9V15"></path><path d="M21 11V19"></path><path d="M9 12H9.01"></path><path d="M12 12H12.01"></path><path d="M15 12H15.01"></path><path d="M6 8V16H8L10 19H18V10L16 8H6Z"></path></svg>',
+  copyLink: '<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>',
+  copyCopied: '<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>',
+  resetDefaults: '<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path></svg>',
+  resetUndo: '<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>',
+};
+
+function setButtonIcon(iconId, markup) {
+  const iconEl = document.getElementById(iconId);
+  if (!iconEl || !markup) return;
+  iconEl.outerHTML = markup.replace('<svg ', `<svg id="${iconId}" `);
+}
 
 function isMobileUiViewport() {
   return window.matchMedia("(max-width: 820px)").matches;
@@ -109,7 +129,13 @@ function updateRuntimeModeButton() {
 
   const lite = isLiteMode();
   const modeLabel = lite ? "ECO" : "FULL";
-  modeButton.textContent = modeLabel;
+  setButtonIcon("runtimeModeIcon", lite ? ICONS.runtimeEco : ICONS.runtimeFull);
+  const modeLabelEl = modeButton.querySelector(".btn-label");
+  if (modeLabelEl) {
+    modeLabelEl.textContent = modeLabel;
+  } else {
+    modeButton.textContent = modeLabel;
+  }
   modeButton.setAttribute("aria-label", lite ? "Runtime mode: ECO" : "Runtime mode: FULL");
   modeButton.setAttribute("aria-pressed", lite ? "true" : "false");
   modeButton.classList.toggle("is-eco", lite);
@@ -121,6 +147,84 @@ function updateRuntimeModeButton() {
 
   setCustomTooltip(modeButton, tooltip);
   modeButton.disabled = !IS_LOCAL_RUNTIME;
+}
+
+function resolveInitialAutoUpdateEnabled() {
+  if (!IS_LOCAL_RUNTIME || !IS_STANDALONE_RUNTIME) return true;
+  try {
+    const raw = window.localStorage.getItem(AUTO_UPDATE_STORAGE_KEY);
+    if (raw === "off") return false;
+    if (raw === "on") return true;
+  } catch (err) {
+    console.warn("Could not read stored auto update preference", err);
+  }
+  return true;
+}
+
+function persistAutoUpdateEnabled() {
+  if (!IS_LOCAL_RUNTIME || !IS_STANDALONE_RUNTIME) return;
+  try {
+    window.localStorage.setItem(AUTO_UPDATE_STORAGE_KEY, autoUpdateEnabled ? "on" : "off");
+  } catch (err) {
+    console.warn("Could not persist auto update preference", err);
+  }
+}
+
+function updateAutoUpdateToggle() {
+  const toggle = document.getElementById("autoUpdateToggle");
+  if (!toggle) return;
+
+  const isAvailable = IS_LOCAL_RUNTIME && IS_STANDALONE_RUNTIME;
+  toggle.disabled = !isAvailable;
+
+  toggle.classList.toggle("is-on", autoUpdateEnabled);
+  toggle.setAttribute("aria-pressed", autoUpdateEnabled ? "true" : "false");
+
+  const enabledTip = "Auto update is on. The launcher will run git pull before opening the dashboard.";
+  const disabledTip = "Auto update is off. The launcher will skip git pull and use local files.";
+  const unavailableTip = "Auto update toggle is available when launched from the standalone launcher.";
+  setCustomTooltip(toggle, isAvailable ? (autoUpdateEnabled ? enabledTip : disabledTip) : unavailableTip);
+}
+
+async function syncAutoUpdatePreferenceFromServer() {
+  if (!IS_LOCAL_RUNTIME || !IS_STANDALONE_RUNTIME) return;
+
+  try {
+    const response = await fetch(STANDALONE_PREFS_ENDPOINT, {
+      method: "GET",
+      cache: "no-store",
+      headers: {
+        "Accept": "application/json",
+      },
+    });
+    if (!response.ok) return;
+
+    const payload = await response.json();
+    if (typeof payload?.autoUpdateEnabled === "boolean") {
+      autoUpdateEnabled = payload.autoUpdateEnabled;
+      persistAutoUpdateEnabled();
+      updateAutoUpdateToggle();
+    }
+  } catch (err) {
+    console.warn("Could not load standalone auto update preference", err);
+  }
+}
+
+async function persistAutoUpdatePreferenceToServer() {
+  if (!IS_LOCAL_RUNTIME || !IS_STANDALONE_RUNTIME) return;
+
+  try {
+    await fetch(STANDALONE_PREFS_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ autoUpdateEnabled }),
+      keepalive: true,
+    });
+  } catch (err) {
+    console.warn("Could not persist standalone auto update preference", err);
+  }
 }
 
 function latestSnapshotHeight() {
@@ -860,14 +964,25 @@ async function copyDashboardLinkToClipboard(buttonEl) {
   }
 
   if (!buttonEl) return;
-  const originalLabel = buttonEl.textContent || "Copy Link";
+  const labelEl = buttonEl.querySelector(".btn-label");
+  const originalLabel = (labelEl ? labelEl.textContent : buttonEl.textContent) || "Copy Link";
   if (buttonEl.__copyFeedbackTimer) {
     window.clearTimeout(buttonEl.__copyFeedbackTimer);
   }
   buttonEl.classList.add("copy-link-btn--copied");
-  buttonEl.textContent = "Copied!";
+  if (labelEl) {
+    labelEl.textContent = "Copied!";
+  } else {
+    buttonEl.textContent = "Copied!";
+  }
+  setButtonIcon("copyDashboardIcon", ICONS.copyCopied);
   buttonEl.__copyFeedbackTimer = window.setTimeout(() => {
-    buttonEl.textContent = originalLabel;
+    if (labelEl) {
+      labelEl.textContent = originalLabel;
+    } else {
+      buttonEl.textContent = originalLabel;
+    }
+    setButtonIcon("copyDashboardIcon", ICONS.copyLink);
     buttonEl.classList.remove("copy-link-btn--copied");
     buttonEl.__copyFeedbackTimer = null;
   }, 1400);
@@ -3271,14 +3386,25 @@ function isDefaultFilterState() {
 function updateResetButtonUi() {
   const btn = document.getElementById("resetDashboard");
   if (!btn) return;
+  const labelEl = btn.querySelector(".btn-label");
   if (state.preResetStateSnapshot) {
-    btn.textContent = "Undo Restore";
+    setButtonIcon("resetDashboardIcon", ICONS.resetUndo);
+    if (labelEl) {
+      labelEl.textContent = "Undo Restore";
+    } else {
+      btn.textContent = "Undo Restore";
+    }
     btn.classList.add("reset-dashboard-btn--undo");
     btn.setAttribute("aria-label", "Undo the last restore defaults action");
     setCustomTooltip(btn, "Undo the last restore defaults action");
     btn.disabled = false;
   } else {
-    btn.textContent = "Restore Defaults";
+    setButtonIcon("resetDashboardIcon", ICONS.resetDefaults);
+    if (labelEl) {
+      labelEl.textContent = "Restore Defaults";
+    } else {
+      btn.textContent = "Restore Defaults";
+    }
     btn.classList.remove("reset-dashboard-btn--undo");
     btn.setAttribute("aria-label", "Restore dashboard defaults");
     setCustomTooltip(btn, "Reset dashboard to defaults");
@@ -4750,6 +4876,7 @@ function attachEvents() {
   const copyDashboardLinkButton = document.getElementById("copyDashboardLink");
   const resetDashboardButton = document.getElementById("resetDashboard");
   const runtimeModeToggleButton = document.getElementById("runtimeModeToggle");
+  const autoUpdateToggleButton = document.getElementById("autoUpdateToggle");
   const themeToggle = document.getElementById("themeToggle");
   const scriptPanelModeToggle = document.getElementById("scriptPanelModeToggle");
   const scriptPanelDetailsToggle = document.getElementById("scriptPanelDetailsToggle");
@@ -4770,6 +4897,15 @@ function attachEvents() {
   if (themeToggle) {
     themeToggle.addEventListener("click", () => {
       toggleTheme();
+    });
+  }
+
+  if (autoUpdateToggleButton) {
+    autoUpdateToggleButton.addEventListener("click", () => {
+      autoUpdateEnabled = !autoUpdateEnabled;
+      updateAutoUpdateToggle();
+      persistAutoUpdateEnabled();
+      persistAutoUpdatePreferenceToServer();
     });
   }
 
@@ -5074,6 +5210,7 @@ function attachEvents() {
 (async function init() {
   try {
     runtimeLiteMode = resolveInitialRuntimeLiteMode();
+    autoUpdateEnabled = resolveInitialAutoUpdateEnabled();
     applyPersistedFilterState(readPersistedFilters());
     const urlPrefs = readFiltersFromUrl();
     if (urlPrefs) {
@@ -5081,6 +5218,8 @@ function attachEvents() {
     }
     applyTheme(resolveInitialTheme());
     applyRuntimeModeUi();
+    updateAutoUpdateToggle();
+    await syncAutoUpdatePreferenceFromServer();
     attachEvents();
     await loadData();
   } catch (err) {

@@ -6,12 +6,29 @@ $Url = "http://$HostAddr`:$Port/webapps/quantum_exposure/dashboard.html?standalo
 
 Set-Location $ScriptDir
 
-if (Get-Command git -ErrorAction SilentlyContinue) {
-  Write-Host "Checking for dashboard updates from GitHub..."
+$autoUpdateEnabled = $true
+$prefsPath = Join-Path $ScriptDir ".standalone_prefs.json"
+if (Test-Path $prefsPath) {
   try {
-    & git pull --ff-only
+    $prefs = Get-Content -Raw $prefsPath | ConvertFrom-Json
+    if ($null -ne $prefs.autoUpdateEnabled) {
+      $autoUpdateEnabled = [bool]$prefs.autoUpdateEnabled
+    }
   } catch {
-    Write-Host "Warning: git pull failed. Launching with local files."
+    $autoUpdateEnabled = $true
+  }
+}
+
+if (Get-Command git -ErrorAction SilentlyContinue) {
+  if ($autoUpdateEnabled) {
+    Write-Host "Checking for dashboard updates from GitHub..."
+    try {
+      & git pull --ff-only
+    } catch {
+      Write-Host "Warning: git pull failed. Launching with local files."
+    }
+  } else {
+    Write-Host "Auto update is off. Skipping git pull."
   }
 }
 
@@ -34,7 +51,7 @@ if (-not $pythonExe) {
 
 Start-Process $Url | Out-Null
 if ($usePyLauncher) {
-  & $pythonExe -3 -m http.server $Port --bind $HostAddr
+  & $pythonExe -3 "$ScriptDir\standalone_server.py" --host $HostAddr --port $Port --root $ScriptDir
 } else {
-  & $pythonExe -m http.server $Port --bind $HostAddr
+  & $pythonExe "$ScriptDir\standalone_server.py" --host $HostAddr --port $Port --root $ScriptDir
 }

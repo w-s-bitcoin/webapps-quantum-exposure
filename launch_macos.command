@@ -8,15 +8,6 @@ URL="http://${HOST}:${PORT}/webapps/quantum_exposure/dashboard.html?standalone=1
 
 cd "$SCRIPT_DIR"
 
-if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  echo "Checking for dashboard updates from GitHub..."
-  if ! git pull --ff-only; then
-    echo "Warning: git pull failed. Launching with local files."
-  fi
-fi
-
-echo "Starting Quantum Exposure standalone server on ${URL}"
-
 if command -v python3 >/dev/null 2>&1; then
   PYTHON=python3
 elif command -v python >/dev/null 2>&1; then
@@ -27,5 +18,36 @@ else
   exit 1
 fi
 
+AUTO_UPDATE_ENABLED=1
+PREFS_FILE="$SCRIPT_DIR/.standalone_prefs.json"
+if [ -f "$PREFS_FILE" ]; then
+  AUTO_UPDATE_ENABLED="$($PYTHON - "$PREFS_FILE" <<'PY'
+import json
+import sys
+
+prefs_file = sys.argv[1]
+try:
+    with open(prefs_file, "r", encoding="utf-8") as fh:
+        payload = json.load(fh)
+    print("1" if bool(payload.get("autoUpdateEnabled", True)) else "0")
+except Exception:
+    print("1")
+PY
+)"
+fi
+
+if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if [ "$AUTO_UPDATE_ENABLED" = "1" ]; then
+    echo "Checking for dashboard updates from GitHub..."
+    if ! git pull --ff-only; then
+      echo "Warning: git pull failed. Launching with local files."
+    fi
+  else
+    echo "Auto update is off. Skipping git pull."
+  fi
+fi
+
+echo "Starting Quantum Exposure standalone server on ${URL}"
+
 open "$URL" >/dev/null 2>&1 || true
-"$PYTHON" -m http.server "$PORT" --bind "$HOST"
+"$PYTHON" "$SCRIPT_DIR/standalone_server.py" --host "$HOST" --port "$PORT" --root "$SCRIPT_DIR"
