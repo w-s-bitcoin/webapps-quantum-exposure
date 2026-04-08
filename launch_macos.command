@@ -8,6 +8,13 @@ URL="http://${HOST}:${PORT}/webapps/quantum_exposure/dashboard.html?standalone=1
 
 cd "$SCRIPT_DIR"
 
+if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "Checking for dashboard updates from GitHub..."
+  if ! git pull --ff-only; then
+    echo "Warning: git pull failed. Launching with local files."
+  fi
+fi
+
 echo "Starting Quantum Exposure standalone server on ${URL}"
 
 if command -v python3 >/dev/null 2>&1; then

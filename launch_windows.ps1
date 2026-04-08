@@ -5,6 +5,16 @@ $HostAddr = "127.0.0.1"
 $Url = "http://$HostAddr`:$Port/webapps/quantum_exposure/dashboard.html?standalone=1"
 
 Set-Location $ScriptDir
+
+if (Get-Command git -ErrorAction SilentlyContinue) {
+  Write-Host "Checking for dashboard updates from GitHub..."
+  try {
+    & git pull --ff-only
+  } catch {
+    Write-Host "Warning: git pull failed. Launching with local files."
+  }
+}
+
 Write-Host "Starting Quantum Exposure standalone server on $Url"
 
 $usePyLauncher = $false

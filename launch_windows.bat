@@ -8,6 +8,15 @@ set "URL=http://%HOST%:%PORT%/webapps/quantum_exposure/dashboard.html?standalone
 
 cd /d "%SCRIPT_DIR%"
 
+where git >nul 2>nul
+if %ERRORLEVEL%==0 (
+  echo Checking for dashboard updates from GitHub...
+  git pull --ff-only
+  if not %ERRORLEVEL%==0 (
+    echo Warning: git pull failed. Launching with local files.
+  )
+)
+
 echo Starting Quantum Exposure standalone server on %URL%
 
 where py >nul 2>nul
