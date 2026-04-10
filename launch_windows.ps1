@@ -19,17 +19,24 @@ if (Test-Path $prefsPath) {
   }
 }
 
-if (Get-Command git -ErrorAction SilentlyContinue) {
-  if ($autoUpdateEnabled) {
-    Write-Host "Checking for dashboard updates from GitHub..."
+if ($autoUpdateEnabled) {
+  if (Get-Command py -ErrorAction SilentlyContinue) {
     try {
-      & git pull --ff-only
+      & py -3 "$ScriptDir\update_standalone_bundle.py"
     } catch {
-      Write-Host "Warning: git pull failed. Launching with local files."
+      Write-Host "Warning: auto update failed. Launching with local files."
+    }
+  } elseif (Get-Command python -ErrorAction SilentlyContinue) {
+    try {
+      & python "$ScriptDir\update_standalone_bundle.py"
+    } catch {
+      Write-Host "Warning: auto update failed. Launching with local files."
     }
   } else {
-    Write-Host "Auto update is off. Skipping git pull."
+    Write-Host "Auto update skipped: Python not found for updater."
   }
+} else {
+  Write-Host "Auto update is off. Skipping update check."
 }
 
 Write-Host "Starting Quantum Exposure standalone server on $Url"

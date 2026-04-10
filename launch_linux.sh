@@ -35,15 +35,10 @@ PY
 )"
 fi
 
-if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  if [ "$AUTO_UPDATE_ENABLED" = "1" ]; then
-    echo "Checking for dashboard updates from GitHub..."
-    if ! git pull --ff-only; then
-      echo "Warning: git pull failed. Launching with local files."
-    fi
-  else
-    echo "Auto update is off. Skipping git pull."
-  fi
+if [ "$AUTO_UPDATE_ENABLED" = "1" ]; then
+  "$PYTHON" "$SCRIPT_DIR/update_standalone_bundle.py" || true
+else
+  echo "Auto update is off. Skipping update check."
 fi
 
 echo "Starting Quantum Exposure standalone server on ${URL}"

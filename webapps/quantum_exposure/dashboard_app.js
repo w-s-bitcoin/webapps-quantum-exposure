@@ -2354,13 +2354,13 @@ async function ensureHistoricalSeriesLoaded() {
   state.historicalSeriesLoading = true;
   try {
     if (isLiteMode()) {
-      const liteResp = await fetch("webapp_data/historical_lite.csv");
-      if (!liteResp.ok) {
-        throw new Error("Could not load webapp_data/historical_lite.csv");
+      const ecoResp = await fetch("webapp_data/historical_eco.csv");
+      if (!ecoResp.ok) {
+        throw new Error("Could not load webapp_data/historical_eco.csv");
       }
 
       const groupedBySnapshot = new Map();
-      parseCsv(await liteResp.text()).forEach((row) => {
+      parseCsv(await ecoResp.text()).forEach((row) => {
         const snapshot = String(row.snapshot || "").trim();
         if (!snapshot) return;
 
@@ -2377,6 +2377,58 @@ async function ensureHistoricalSeriesLoaded() {
         }
         groupedBySnapshot.get(snapshot).push(aggregatesRow);
       });
+
+      if (state.archivedSnapshotsEnabled) {
+        let archivedMergedCount = 0;
+        const activeSnapshotSet = new Set(groupedBySnapshot.keys());
+        try {
+          const archivedResp = await fetch("webapp_data/historical_archived.csv");
+          if (archivedResp.ok) {
+            parseCsv(await archivedResp.text()).forEach((row) => {
+              const snapshot = String(row.snapshot || "").trim();
+              if (!snapshot || activeSnapshotSet.has(snapshot)) return;
+
+              const aggregatesRow = { ...row };
+              if (snapshot === "0") {
+                // Genesis reward is intentionally excluded from dashboard total supply.
+                aggregatesRow.supply_sats = "0";
+                aggregatesRow.exposed_supply_sats = "0";
+              }
+              delete aggregatesRow.snapshot;
+
+              if (!groupedBySnapshot.has(snapshot)) {
+                groupedBySnapshot.set(snapshot, []);
+              }
+              groupedBySnapshot.get(snapshot).push(aggregatesRow);
+              archivedMergedCount += 1;
+            });
+          }
+        } catch (_err) {
+          // Best effort only; historical chart still renders active snapshots.
+        }
+
+        // Fallback: if archived mode is enabled but the historical_archived.csv
+        // merge yielded nothing, load archived snapshot aggregates directly.
+        if (archivedMergedCount === 0) {
+          const archivedSnapshots = Object.entries(state.snapshotLocationByHeight || {})
+            .filter(([, location]) => location === "archived")
+            .map(([height]) => String(height).trim())
+            .filter((height) => /^\d+$/.test(height));
+
+          await Promise.all(
+            archivedSnapshots.map(async (snapshot) => {
+              if (!snapshot || groupedBySnapshot.has(snapshot)) return;
+              try {
+                const resp = await fetch(`webapp_data/archived/${snapshot}/dashboard_pubkeys_aggregates.csv`);
+                if (!resp.ok) return;
+                groupedBySnapshot.set(snapshot, parseCsv(await resp.text()));
+              } catch (_err) {
+                // Keep best-effort behavior; missing archived points won't block rendering.
+              }
+            })
+          );
+        }
+      }
 
       state.historicalSeries = Array.from(groupedBySnapshot.entries())
         .sort((left, right) => Number.parseInt(left[0], 10) - Number.parseInt(right[0], 10))
@@ -3283,7 +3335,7 @@ function updateScriptPanelModeUi() {
     toggle.dataset.mode = "bars";
     toggle.setAttribute("aria-pressed", "false");
     setCustomTooltip(toggle, "Switch to historical stacked chart");
-    if (legendLine1) legendLine1.textContent = "Rows ordered by total supply";
+    if (legendLine1) legendLine1.textContent = "";
     if (legendLine2) {
       if (showFilteredOnly) {
         legendLine2.textContent = "Bar width = relative filtered supply size";
