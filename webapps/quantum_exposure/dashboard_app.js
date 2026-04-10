@@ -61,6 +61,7 @@ const UNIDENTIFIED_IDENTITY_GROUP_FILTER_VALUE = "__unidentified_group__";
 const UNIDENTIFIED_IDENTITY_GROUP_FILTER_LABEL = "Unidentified";
 const THEME_STORAGE_KEY = "quantum-research-dashboard-theme";
 const RUNTIME_MODE_STORAGE_KEY = "quantum-research-dashboard-runtime-mode-v1";
+const ARCHIVED_SNAPSHOTS_ENABLED_STORAGE_KEY = "quantum-research-archived-snapshots-enabled-v1";
 const FILTERS_STORAGE_KEY = "quantum-research-dashboard-filters-v1";
 const HISTORICAL_GE1_CACHE_STORAGE_KEY = "quantum-research-historical-ge1-v1";
 const AUTO_UPDATE_STORAGE_KEY = "quantum-standalone-auto-update-v1";
@@ -120,6 +121,27 @@ function persistRuntimeMode() {
     window.localStorage.setItem(RUNTIME_MODE_STORAGE_KEY, isLiteMode() ? "lite" : "full");
   } catch (err) {
     console.warn("Could not persist runtime mode preference", err);
+  }
+}
+
+function persistArchivedSnapshotsEnabled() {
+  if (!IS_LOCAL_RUNTIME) return;
+  try {
+    window.localStorage.setItem(ARCHIVED_SNAPSHOTS_ENABLED_STORAGE_KEY, state.archivedSnapshotsEnabled ? "true" : "false");
+  } catch (err) {
+    console.warn("Could not persist archived snapshots enabled preference", err);
+  }
+}
+
+function loadArchivedSnapshotsEnabled() {
+  if (!IS_LOCAL_RUNTIME) return;
+  try {
+    const stored = window.localStorage.getItem(ARCHIVED_SNAPSHOTS_ENABLED_STORAGE_KEY);
+    if (stored === "true") {
+      state.archivedSnapshotsEnabled = true;
+    }
+  } catch (err) {
+    console.warn("Could not load archived snapshots enabled preference", err);
   }
 }
 
@@ -294,6 +316,7 @@ function applyRuntimeModeUi() {
   const lite = isLiteMode();
   document.documentElement.classList.toggle("lite-mode", lite);
   document.documentElement.classList.toggle("full-mode", !lite);
+  loadArchivedSnapshotsEnabled();
   updateRuntimeModeButton();
   updateTopExposureFilterControlAvailability();
 }
@@ -2342,6 +2365,11 @@ async function ensureHistoricalSeriesLoaded() {
         if (!snapshot) return;
 
         const aggregatesRow = { ...row };
+        if (snapshot === "0") {
+          // Genesis reward is intentionally excluded from dashboard total supply.
+          aggregatesRow.supply_sats = "0";
+          aggregatesRow.exposed_supply_sats = "0";
+        }
         delete aggregatesRow.snapshot;
 
         if (!groupedBySnapshot.has(snapshot)) {
@@ -2553,7 +2581,7 @@ function buildHistoricalStackedData(filters) {
   const ge1FilterKey = tagFiltersActive ? historicalGe1FilterKey(filters) : null;
   const fallbackFilterKey = tagFiltersActive ? state.historicalSeriesGe1FallbackFilterKey : null;
 
-  return state.historicalSeries.map((point) => {
+  const points = state.historicalSeries.map((point) => {
     const rows = point.aggregatesRows;
 
     // Base/faded layers always show the full "all-balance" picture regardless of filter.
@@ -2620,6 +2648,26 @@ function buildHistoricalStackedData(filters) {
       },
     };
   });
+
+  // Prepend a starting point at height 0 with all supplies at 0
+  const zeroPoint = {
+    snapshot: "0",
+    totalSupplySats: 0,
+    fullNever: 0,
+    fullInactive: 0,
+    fullActive: 0,
+    fullNonExposed: 0,
+    filteredNever: 0,
+    filteredInactive: 0,
+    filteredActive: 0,
+    spendHighlighted: {
+      never_spent: showAllSpends || spendFilterSet.has("never_spent"),
+      inactive: showAllSpends || spendFilterSet.has("inactive"),
+      active: showAllSpends || spendFilterSet.has("active"),
+    },
+  };
+
+  return [zeroPoint, ...points];
 }
 
 function showHistoricalLoadingOverlay(container, message) {
@@ -2751,7 +2799,9 @@ function renderHistoricalStackedChart(filters) {
     return;
   }
 
-  const points = buildHistoricalStackedData(filters).filter((point) => point.totalSupplySats > 0);
+  const allPoints = buildHistoricalStackedData(filters);
+  // Keep the zero point (height 0) even if it has no supply, but filter out other points with no supply.
+  const points = allPoints.filter((point) => point.totalSupplySats > 0 || point.snapshot === "0");
   if (!points.length) {
     clearHistoricalLoadingOverlay(container);
     container.className = "bar-empty";
@@ -3097,7 +3147,7 @@ function renderHistoricalStackedChart(filters) {
     hoverLine.setAttribute("visibility", "visible");
 
     hoverDot.setAttribute("cx", String(nearest.x));
-    hoverDot.setAttribute("cy", String(yAt(showNonExposed ? nearest.totalTop : nearest.activeTop)));
+    hoverDot.setAttribute("cy", String(yAt(showFilteredOnly ? nearest.activeFilteredTop : (showNonExposed ? nearest.totalTop : nearest.activeTop))));
     hoverDot.setAttribute("visibility", "visible");
 
     const neverBtc = Math.round(nearest.filteredNever / SATS_PER_BTC);
