@@ -36,14 +36,14 @@ echo Starting Quantum Exposure standalone server on %URL%
 where py >nul 2>nul
 if %ERRORLEVEL%==0 (
   start "" "%URL%"
-  py -3 "%SCRIPT_DIR%standalone_server.py" --host %HOST% --port %PORT% --root "%SCRIPT_DIR%"
+  py -3 "%SCRIPT_DIR%standalone_server.py" --host %HOST% --port %PORT% --root "%SCRIPT_DIR:~0,-1%"
   goto :eof
 )
 
 where python >nul 2>nul
 if %ERRORLEVEL%==0 (
   start "" "%URL%"
-  python "%SCRIPT_DIR%standalone_server.py" --host %HOST% --port %PORT% --root "%SCRIPT_DIR%"
+  python "%SCRIPT_DIR%standalone_server.py" --host %HOST% --port %PORT% --root "%SCRIPT_DIR:~0,-1%"
   goto :eof
 )
 
