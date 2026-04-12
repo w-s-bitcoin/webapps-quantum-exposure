@@ -40,6 +40,9 @@ const state = {
   balanceAutoForcedFromAllByTopFilters: false,
   pendingPersistedSnapshotPreference: null,
   pendingPersistedSnapshotHeight: null,
+  archivedSnapshotsEnabled: false,
+  archivedSnapshotsAvailable: false,
+  snapshotLocationByHeight: {},
   preResetStateSnapshot: null,
   pendingIdentityTagExclusions: null,
   ge1FullDataLoadTriggered: false,
@@ -64,7 +67,6 @@ const RUNTIME_MODE_STORAGE_KEY = "quantum-research-dashboard-runtime-mode-v1";
 const ARCHIVED_SNAPSHOTS_ENABLED_STORAGE_KEY = "quantum-research-archived-snapshots-enabled-v1";
 const FILTERS_STORAGE_KEY = "quantum-research-dashboard-filters-v1";
 const HISTORICAL_GE1_CACHE_STORAGE_KEY = "quantum-research-historical-ge1-v1";
-const AUTO_UPDATE_STORAGE_KEY = "quantum-standalone-auto-update-v1";
 const SNAPSHOT_PREF_LATEST = "latest";
 const SNAPSHOT_PREF_SPECIFIC = "specific";
 const ALLOWED_BALANCE_FILTERS = new Set(["all", "ge1", "ge10", "ge100", "ge1000"]);
@@ -74,11 +76,7 @@ const ALLOWED_SUPPLY_DISPLAY_MODES = new Set(["total", "exposed", "filtered"]);
 const SHARE_NONE_TOKEN = "__none__";
 const LOCAL_RUNTIME_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 const IS_LOCAL_RUNTIME = LOCAL_RUNTIME_HOSTS.has(window.location.hostname);
-const DASHBOARD_URL_PARAMS = new URLSearchParams(window.location.search);
-const IS_STANDALONE_RUNTIME = DASHBOARD_URL_PARAMS.get("standalone") === "1";
-const STANDALONE_PREFS_ENDPOINT = "/__standalone__/prefs";
 let runtimeLiteMode = true;
-let autoUpdateEnabled = true;
 
 const ICONS = {
   runtimeEco: '<svg class="icon-fill" viewBox="0 0 48 48" focusable="false" aria-hidden="true"><path d="M31.197 33.609c-3.86 3.313-10.505 4.373-16.005.214 1.282-2.014 6.075-8.804 14.26-12.078l-.556-1.393c-7.977 3.191-12.782 9.372-14.573 12.047-1.513-3.531-1.792-6.971-.775-10.021.947-2.846 2.998-5.146 5.774-6.477 3.986-1.91 6.896-2.212 9.977-2.531 2.933-.304 5.949-.616 9.79-2.346-.387 6.263-2.22 17.714-7.892 22.585zm8.749-26.372c-4.455 2.475-7.613 2.803-10.957 3.149-3.199.331-6.508.675-10.963 2.81-3.516 1.684-6.118 4.609-7.325 8.234-1.316 3.954-.899 8.355 1.16 12.788-2.209 2.801-4.268 6.68-4.861 7.83h3.402c.816-1.487 2.102-3.694 3.441-5.486 2.951 2.087 6.151 2.986 9.209 2.986 3.858 0 7.489-1.421 10.099-3.664 7.137-6.128 9.023-20.56 9.023-27.336V6l-2.228 1.237z"></path></svg>',
@@ -168,85 +166,8 @@ function updateRuntimeModeButton() {
   const tooltip = IS_LOCAL_RUNTIME ? tooltipLocal : tooltipOnline;
 
   setCustomTooltip(modeButton, tooltip);
-  modeButton.disabled = !IS_LOCAL_RUNTIME;
-}
-
-function resolveInitialAutoUpdateEnabled() {
-  if (!IS_LOCAL_RUNTIME || !IS_STANDALONE_RUNTIME) return true;
-  try {
-    const raw = window.localStorage.getItem(AUTO_UPDATE_STORAGE_KEY);
-    if (raw === "off") return false;
-    if (raw === "on") return true;
-  } catch (err) {
-    console.warn("Could not read stored auto update preference", err);
-  }
-  return true;
-}
-
-function persistAutoUpdateEnabled() {
-  if (!IS_LOCAL_RUNTIME || !IS_STANDALONE_RUNTIME) return;
-  try {
-    window.localStorage.setItem(AUTO_UPDATE_STORAGE_KEY, autoUpdateEnabled ? "on" : "off");
-  } catch (err) {
-    console.warn("Could not persist auto update preference", err);
-  }
-}
-
-function updateAutoUpdateToggle() {
-  const toggle = document.getElementById("autoUpdateToggle");
-  if (!toggle) return;
-
-  const isAvailable = IS_LOCAL_RUNTIME && IS_STANDALONE_RUNTIME;
-  toggle.disabled = !isAvailable;
-
-  toggle.classList.toggle("is-on", autoUpdateEnabled);
-  toggle.setAttribute("aria-pressed", autoUpdateEnabled ? "true" : "false");
-
-  const enabledTip = "Auto update is on. The launcher will run git pull before opening the dashboard.";
-  const disabledTip = "Auto update is off. The launcher will skip git pull and use local files.";
-  const unavailableTip = "Auto update toggle is available when launched from the standalone launcher.";
-  setCustomTooltip(toggle, isAvailable ? (autoUpdateEnabled ? enabledTip : disabledTip) : unavailableTip);
-}
-
-async function syncAutoUpdatePreferenceFromServer() {
-  if (!IS_LOCAL_RUNTIME || !IS_STANDALONE_RUNTIME) return;
-
-  try {
-    const response = await fetch(STANDALONE_PREFS_ENDPOINT, {
-      method: "GET",
-      cache: "no-store",
-      headers: {
-        "Accept": "application/json",
-      },
-    });
-    if (!response.ok) return;
-
-    const payload = await response.json();
-    if (typeof payload?.autoUpdateEnabled === "boolean") {
-      autoUpdateEnabled = payload.autoUpdateEnabled;
-      persistAutoUpdateEnabled();
-      updateAutoUpdateToggle();
-    }
-  } catch (err) {
-    console.warn("Could not load standalone auto update preference", err);
-  }
-}
-
-async function persistAutoUpdatePreferenceToServer() {
-  if (!IS_LOCAL_RUNTIME || !IS_STANDALONE_RUNTIME) return;
-
-  try {
-    await fetch(STANDALONE_PREFS_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ autoUpdateEnabled }),
-      keepalive: true,
-    });
-  } catch (err) {
-    console.warn("Could not persist standalone auto update preference", err);
-  }
+  modeButton.disabled = false;
+  modeButton.classList.toggle("is-online-locked", !IS_LOCAL_RUNTIME);
 }
 
 function latestSnapshotHeight() {
@@ -318,7 +239,38 @@ function applyRuntimeModeUi() {
   document.documentElement.classList.toggle("full-mode", !lite);
   loadArchivedSnapshotsEnabled();
   updateRuntimeModeButton();
+  updateArchivedSnapshotsToggleUi();
   updateTopExposureFilterControlAvailability();
+}
+
+function updateArchivedSnapshotsToggleUi() {
+  const archivedToggleButton = document.getElementById("archivedSnapshotsToggle");
+  if (!archivedToggleButton) return;
+
+  const shouldShow = IS_LOCAL_RUNTIME && state.archivedSnapshotsAvailable;
+
+  archivedToggleButton.classList.toggle("is-hidden", !shouldShow);
+  archivedToggleButton.classList.toggle("is-on", shouldShow && state.archivedSnapshotsEnabled);
+  archivedToggleButton.setAttribute("aria-pressed", shouldShow && state.archivedSnapshotsEnabled ? "true" : "false");
+  archivedToggleButton.setAttribute(
+    "aria-label",
+    shouldShow && state.archivedSnapshotsEnabled
+      ? "Archived snapshots shown"
+      : "Archived snapshots hidden"
+  );
+  setCustomTooltip(
+    archivedToggleButton,
+    shouldShow
+      ? "Include archived snapshot heights in filters and historical charts"
+      : "Archived snapshots are only available when running locally with webapp_data/archived present"
+  );
+}
+
+function snapshotBasePath(snapshot) {
+  const height = String(snapshot || "").trim();
+  return state.snapshotLocationByHeight[height] === "archived"
+    ? `webapp_data/archived/${height}`
+    : `webapp_data/${height}`;
 }
 
 function normalizeSupplyDisplayMode(mode) {
@@ -2378,11 +2330,6 @@ async function ensureHistoricalSeriesLoaded() {
         if (!snapshot) return;
 
         const aggregatesRow = { ...row };
-        if (snapshot === "0") {
-          // Genesis reward is intentionally excluded from dashboard total supply.
-          aggregatesRow.supply_sats = "0";
-          aggregatesRow.exposed_supply_sats = "0";
-        }
         delete aggregatesRow.snapshot;
 
         if (!groupedBySnapshot.has(snapshot)) {
@@ -2402,11 +2349,6 @@ async function ensureHistoricalSeriesLoaded() {
               if (!snapshot || activeSnapshotSet.has(snapshot)) return;
 
               const aggregatesRow = { ...row };
-              if (snapshot === "0") {
-                // Genesis reward is intentionally excluded from dashboard total supply.
-                aggregatesRow.supply_sats = "0";
-                aggregatesRow.exposed_supply_sats = "0";
-              }
               delete aggregatesRow.snapshot;
 
               if (!groupedBySnapshot.has(snapshot)) {
@@ -2459,7 +2401,7 @@ async function ensureHistoricalSeriesLoaded() {
 
     const series = [];
     for (const snapshot of snapshotsAsc) {
-      const resp = await fetch(`webapp_data/${snapshot}/dashboard_pubkeys_aggregates.csv`);
+      const resp = await fetch(`${snapshotBasePath(snapshot)}/dashboard_pubkeys_aggregates.csv`);
       if (!resp.ok) {
         throw new Error(`Could not load historical aggregates for snapshot ${snapshot}`);
       }
@@ -2521,7 +2463,7 @@ async function ensureHistoricalSeriesGe1Loaded(filters, signal) {
 
       let resp;
       try {
-        resp = await fetch(`webapp_data/${point.snapshot}/dashboard_pubkeys_ge_1btc.csv`, signal ? { signal } : {});
+        resp = await fetch(`${snapshotBasePath(point.snapshot)}/dashboard_pubkeys_ge_1btc.csv`, signal ? { signal } : {});
       } catch (err) {
         if (err.name === "AbortError") break;
         throw err;
@@ -4895,7 +4837,7 @@ async function ensureIdentityGroupsLoaded() {
   return state.identityGroupsLoadingPromise;
 }
 
-async function loadData() {
+async function loadData(preferredSnapshotOverride = "") {
   state.availableSnapshots = await loadAvailableSnapshots();
   if (!state.availableSnapshots.length) {
     throw new Error("No snapshots found in webapp_data/");
@@ -4920,8 +4862,11 @@ async function loadData() {
   populateSnapshotFilter(state.availableSnapshots);
   const preferredMode = state.pendingPersistedSnapshotPreference;
   const preferredSnapshot = state.pendingPersistedSnapshotHeight;
+  const preferredOverride = String(preferredSnapshotOverride || "").trim();
   const initialSnapshot =
-    preferredMode === SNAPSHOT_PREF_LATEST
+    preferredOverride && state.availableSnapshots.includes(preferredOverride)
+      ? preferredOverride
+      : preferredMode === SNAPSHOT_PREF_LATEST
       ? state.availableSnapshots[0]
       : preferredSnapshot && state.availableSnapshots.includes(preferredSnapshot)
       ? preferredSnapshot
@@ -5004,7 +4949,7 @@ async function loadSnapshotLabelLookup(snapshots) {
   await Promise.all(
     missingSnapshotLabels.map(async (snapshot) => {
       try {
-        const resp = await fetch(`webapp_data/${snapshot}/dashboard_snapshot_meta.csv`);
+        const resp = await fetch(`${snapshotBasePath(snapshot)}/dashboard_snapshot_meta.csv`);
         if (!resp.ok) {
           return;
         }
@@ -5029,18 +4974,60 @@ async function loadSnapshotLabelLookup(snapshots) {
 }
 
 async function loadAvailableSnapshots() {
+  state.snapshotLocationByHeight = {};
+
   const indexResp = await fetch("webapp_data/snapshots_index.csv");
+  let activeRows = [];
   if (indexResp.ok) {
-    const rows = parseCsv(await indexResp.text());
-    const values = rows
+    activeRows = parseCsv(await indexResp.text());
+    const values = activeRows
       .map((row) => (row.snapshot_blockheight || "").trim())
       .filter((value) => /^\d+$/.test(value));
+
+    values.forEach((height) => {
+      state.snapshotLocationByHeight[height] = "active";
+    });
+
+    let archivedRows = [];
+    if (IS_LOCAL_RUNTIME) {
+      try {
+        const archivedResp = await fetch("webapp_data/archived_index.csv");
+        if (archivedResp.ok) {
+          archivedRows = parseCsv(await archivedResp.text());
+        }
+      } catch (_err) {
+        archivedRows = [];
+      }
+    }
+
+    const archivedValues = archivedRows
+      .map((row) => (row.snapshot_blockheight || "").trim())
+      .filter((value) => /^\d+$/.test(value));
+
+    state.archivedSnapshotsAvailable = archivedValues.length > 0;
+    if (!state.archivedSnapshotsAvailable) {
+      state.archivedSnapshotsEnabled = false;
+    }
+    updateArchivedSnapshotsToggleUi();
+
+    const mergedValues = [...values];
+    if (state.archivedSnapshotsEnabled) {
+      archivedValues.forEach((height) => {
+        if (!state.snapshotLocationByHeight[height]) {
+          state.snapshotLocationByHeight[height] = "archived";
+        }
+        if (!mergedValues.includes(height)) {
+          mergedValues.push(height);
+        }
+      });
+    }
+
     if (values.length) {
-      values.sort((left, right) => Number.parseInt(right, 10) - Number.parseInt(left, 10));
+      mergedValues.sort((left, right) => Number.parseInt(right, 10) - Number.parseInt(left, 10));
       // Pre-populate snapshot label datetimes from the embedded snapshot_time column.
       // This makes dropdown labels available immediately, with no need to load the large
       // blockheight_datetime_lookup.csv or individual per-snapshot meta CSVs for this purpose.
-      rows.forEach((row) => {
+      activeRows.forEach((row) => {
         const height = (row.snapshot_blockheight || "").trim();
         const unixTime = toInt(row.snapshot_time);
         if (height && unixTime) {
@@ -5048,9 +5035,23 @@ async function loadAvailableSnapshots() {
           state.blockDatetimeByHeight[height] = formatTooltipDate(unixTime);
         }
       });
-      return values;
+      if (state.archivedSnapshotsEnabled) {
+        archivedRows.forEach((row) => {
+          const height = (row.snapshot_blockheight || "").trim();
+          const unixTime = toInt(row.snapshot_time);
+          if (height && unixTime) {
+            state.snapshotLabelDatetimeByHeight[height] = formatSnapshotSelectDate(unixTime);
+            state.blockDatetimeByHeight[height] = formatTooltipDate(unixTime);
+          }
+        });
+      }
+      return mergedValues;
     }
   }
+
+  state.archivedSnapshotsAvailable = false;
+  state.archivedSnapshotsEnabled = false;
+  updateArchivedSnapshotsToggleUi();
 
   const latestResp = await fetch("webapp_data/latest_snapshot.txt");
   if (!latestResp.ok) {
@@ -5080,7 +5081,7 @@ function populateSnapshotFilter(snapshots) {
 
 async function loadSnapshotData(snapshot) {
   const requestedSnapshot = String(snapshot || "").trim();
-  const basePath = `webapp_data/${requestedSnapshot}`;
+  const basePath = snapshotBasePath(requestedSnapshot);
   const cached = state.snapshotDataCache.get(requestedSnapshot);
 
   if (cached) {
@@ -5212,8 +5213,8 @@ function attachEvents() {
   bindCustomTooltips();
   const copyDashboardLinkButton = document.getElementById("copyDashboardLink");
   const resetDashboardButton = document.getElementById("resetDashboard");
+  const archivedSnapshotsToggleButton = document.getElementById("archivedSnapshotsToggle");
   const runtimeModeToggleButton = document.getElementById("runtimeModeToggle");
-  const autoUpdateToggleButton = document.getElementById("autoUpdateToggle");
   const themeToggle = document.getElementById("themeToggle");
   const scriptPanelModeToggle = document.getElementById("scriptPanelModeToggle");
   const scriptPanelDetailsToggle = document.getElementById("scriptPanelDetailsToggle");
@@ -5237,18 +5238,12 @@ function attachEvents() {
     });
   }
 
-  if (autoUpdateToggleButton) {
-    autoUpdateToggleButton.addEventListener("click", () => {
-      autoUpdateEnabled = !autoUpdateEnabled;
-      updateAutoUpdateToggle();
-      persistAutoUpdateEnabled();
-      persistAutoUpdatePreferenceToServer();
-    });
-  }
-
   if (runtimeModeToggleButton) {
     runtimeModeToggleButton.addEventListener("click", async () => {
-      if (!IS_LOCAL_RUNTIME) return;
+      if (!IS_LOCAL_RUNTIME) {
+        window.open("https://github.com/w-s-bitcoin/webapps-quantum-exposure", "_blank", "noopener,noreferrer");
+        return;
+      }
 
       runtimeLiteMode = !isLiteMode();
       persistRuntimeMode();
@@ -5275,6 +5270,33 @@ function attachEvents() {
         if (!isLiteMode()) {
           await refreshSnapshotLookupUi();
         }
+      } catch (err) {
+        console.error(err);
+        renderEmptyKpis();
+      }
+    });
+  }
+
+  if (archivedSnapshotsToggleButton) {
+    archivedSnapshotsToggleButton.addEventListener("click", async () => {
+      if (!IS_LOCAL_RUNTIME || !state.archivedSnapshotsAvailable) return;
+
+      state.archivedSnapshotsEnabled = !state.archivedSnapshotsEnabled;
+      updateArchivedSnapshotsToggleUi();
+      persistArchivedSnapshotsEnabled();
+
+      state.snapshotDataCache.clear();
+      state.topExposuresDataCache.clear();
+      state.historicalSeries = [];
+      state.ge1Rows = [];
+      state.topExposuresLoading = false;
+      resetTopExposurePagination();
+
+      const snapshotFilter = document.getElementById("snapshotFilter");
+      const targetSnapshot = String(state.snapshotHeight || snapshotFilter?.value || "").trim();
+
+      try {
+        await loadData(targetSnapshot);
       } catch (err) {
         console.error(err);
         renderEmptyKpis();
@@ -5550,7 +5572,6 @@ function attachEvents() {
 (async function init() {
   try {
     runtimeLiteMode = resolveInitialRuntimeLiteMode();
-    autoUpdateEnabled = resolveInitialAutoUpdateEnabled();
     applyPersistedFilterState(readPersistedFilters());
     const urlPrefs = readFiltersFromUrl();
     if (urlPrefs) {
@@ -5558,8 +5579,6 @@ function attachEvents() {
     }
     applyTheme(resolveInitialTheme());
     applyRuntimeModeUi();
-    updateAutoUpdateToggle();
-    await syncAutoUpdatePreferenceFromServer();
     attachEvents();
     await loadData();
   } catch (err) {
