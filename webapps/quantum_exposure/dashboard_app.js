@@ -1079,17 +1079,6 @@ function normalizeSelectionForShare(values, allValue) {
   return values;
 }
 
-function appendArrayParam(params, key, values, noneToken = SHARE_NONE_TOKEN) {
-  if (!Array.isArray(values)) return;
-  if (values.length === 0) {
-    params.append(key, noneToken);
-    return;
-  }
-  values.forEach((value) => {
-    params.append(key, value);
-  });
-}
-
 function encodeShareState(payload) {
   try {
     const json = JSON.stringify(payload);
@@ -1642,13 +1631,6 @@ function formatInt(value) {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
 }
 
-function formatFixed2(value) {
-  return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-}
-
 function formatCeilBtc(sats) {
   const btc = Math.floor(sats / SATS_PER_BTC);
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(btc);
@@ -1835,13 +1817,20 @@ function showCustomTooltip(anchor, x, y) {
   tooltip.innerHTML = text
     .split("\n")
     .map((line) => {
-      const match = line.match(/^([^:]+:)(\s*)(.*)$/);
+      const match = line.match(/^([^:]+):\s*(.*)$/);
       if (!match) {
         activeValueClass = "";
         return `<div class="tooltip-row"><span>${escapeHtml(line)}</span></div>`;
       }
 
-      const rawLabel = String(match[1] || "").replace(/:$/, "").trim().toLowerCase();
+      const labelText = String(match[1] || "").trim();
+      const isStructuredLabel = /^[A-Za-z][A-Za-z0-9_()\/ +\-]{0,48}$/.test(labelText);
+      if (!isStructuredLabel) {
+        activeValueClass = "";
+        return `<div class="tooltip-row"><span>${escapeHtml(line)}</span></div>`;
+      }
+
+      const rawLabel = labelText.toLowerCase();
       if (rawLabel === "never spent") {
         activeValueClass = "tooltip-value-never";
       } else if (rawLabel === "inactive") {
@@ -1853,7 +1842,7 @@ function showCustomTooltip(anchor, x, y) {
       }
 
       const valueClassAttr = activeValueClass ? ` class="${activeValueClass}"` : "";
-      return `<div class="tooltip-row"><span class="tooltip-label">${escapeHtml(match[1])}</span><span${valueClassAttr}>${escapeHtml(match[3])}</span></div>`;
+      return `<div class="tooltip-row"><span class="tooltip-label">${escapeHtml(`${labelText}:`)}</span><span${valueClassAttr}>${escapeHtml(match[2])}</span></div>`;
     })
     .join("");
   tooltip.classList.add("is-visible");
@@ -2325,12 +2314,6 @@ function renderTagMenu(menuId, checkboxClass, options, selectedValues) {
     `<label class="script-option"><input type="checkbox" class="${checkboxClass}" value="All" ${
       useAll ? "checked" : ""
     }> All</label>` + optionHtml;
-}
-
-function setAllChecks(checkboxes, checked) {
-  checkboxes.forEach((el) => {
-    el.checked = checked;
-  });
 }
 
 function tagStateKeyForTrigger(triggerId) {
@@ -4337,24 +4320,6 @@ function rowPassesTopExposureFilters(row, filters, includeTagFilters = true) {
   }
 
   if (!includeTagFilters) return true;
-
-  if (!detailTagPassesFilters(filters.detailTags, row.details || "")) {
-    return false;
-  }
-
-  if (!identityBelongsToSelectedGroups(row.identity || "", filters.identityGroups)) {
-    return false;
-  }
-
-  if (!identityTagPassesFilters(filters.identityTags, row.identity || "")) {
-    return false;
-  }
-
-  return true;
-}
-
-function rowPassesTagAndBalanceFilters(row, filters) {
-  if (!rowPassesBalanceFilter(row, filters.balance)) return false;
 
   if (!detailTagPassesFilters(filters.detailTags, row.details || "")) {
     return false;
