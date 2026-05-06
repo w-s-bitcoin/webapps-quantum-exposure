@@ -153,7 +153,7 @@
   function getStandalonePath() {
     const base = getPageBasePath();
     const path = IS_LOCAL_HOST
-      ? `${base}/quantum_exposure.html`
+      ? `${base}/webapps/quantum_exposure/dashboard.html?standalone=1`
       : `${base}/quantum_exposure`;
     return normalizeJoinedPath(path);
   }
@@ -169,7 +169,7 @@
   function getMainRouteUrl(filename) {
     const slug = slugFromFilename(filename);
     const localStandaloneBySlug = {
-      quantum_exposure: 'quantum_exposure.html',
+      quantum_exposure: 'webapps/quantum_exposure/dashboard.html?standalone=1',
       bip110_signaling: 'bip110_signaling.html',
       dca_cost_basis: 'dca_cost_basis.html',
       node_count: 'node_count.html',
@@ -178,7 +178,7 @@
 
     if (slug === "quantum_exposure") {
       if (IS_LOCAL_HOST) {
-        return normalizeJoinedPath(`${getPageBasePath()}/quantum_exposure.html`);
+        return normalizeJoinedPath(`${getPageBasePath()}/webapps/quantum_exposure/dashboard.html?standalone=1`);
       }
       return getStandalonePath();
     }

@@ -1148,6 +1148,16 @@ function applyPendingIdentityTagExclusions(identityOptions) {
 function applyPersistedFilterState(prefs) {
   if (!prefs || typeof prefs !== "object") return;
 
+  if (IS_LOCAL_RUNTIME) {
+    if (prefs.runtimeMode === "lite") {
+      runtimeLiteMode = true;
+    } else if (prefs.runtimeMode === "full") {
+      runtimeLiteMode = false;
+    } else if (typeof prefs.runtimeLiteMode === "boolean") {
+      runtimeLiteMode = prefs.runtimeLiteMode;
+    }
+  }
+
   const balanceFilter = document.getElementById("balanceFilter");
   if (balanceFilter && ALLOWED_BALANCE_FILTERS.has(prefs.balance)) {
     balanceFilter.value = prefs.balance;
@@ -1241,6 +1251,7 @@ function persistFilters(filters) {
         : SNAPSHOT_PREF_SPECIFIC;
 
     const payload = {
+      runtimeMode: isLiteMode() ? "lite" : "full",
       balance: filters.balance,
       balanceBtc: !isLiteMode() ? Math.max(0, Number(state.fullBalanceThresholdBtc) || 0) : 0,
       inactiveThresholdYears: !isLiteMode() ? Math.max(INACTIVE_THRESHOLD_MIN_YEARS, Math.min(INACTIVE_THRESHOLD_MAX_YEARS, Number(state.inactiveThresholdYears) || INACTIVE_THRESHOLD_MIN_YEARS)) : INACTIVE_THRESHOLD_MIN_YEARS,
@@ -1385,7 +1396,7 @@ function getShareRouteBaseUrl() {
     : path.replace(/\/[^/]*$/, "");
 
   if (IS_LOCAL_RUNTIME) {
-    return `${window.location.origin}${basePath}/quantum_exposure.html`;
+    return `${window.location.origin}${basePath}/webapps/quantum_exposure/dashboard.html`;
   }
   return `${window.location.origin}${basePath}/quantum_exposure`;
 }
@@ -1414,6 +1425,7 @@ function buildShareableDashboardUrl() {
       ? SNAPSHOT_PREF_LATEST
       : SNAPSHOT_PREF_SPECIFIC;
   const defaults = {
+    r: "l",
     b: "all",
     bb: 0,
     iy: 1,
@@ -1430,6 +1442,7 @@ function buildShareableDashboardUrl() {
   };
 
   const normalized = {
+    r: isLiteMode() ? "l" : "f",
     b: filters.balance,
     bb: !isLiteMode() ? Math.max(0, Number(filters.balanceThresholdBtc) || 0) : 0,
     iy: !isLiteMode()
@@ -1465,6 +1478,7 @@ function buildShareableDashboardUrl() {
   addIfDifferent("d", normalized.d, defaults.d);
   addIfDifferent("g", normalized.g, defaults.g);
   addIfDifferent("i", normalized.i, defaults.i);
+  addIfDifferent("r", normalized.r, defaults.r);
   addIfDifferent("v", normalized.v, defaults.v);
   addIfDifferent("m", normalized.m, defaults.m);
   addIfDifferent("c", normalized.c, defaults.c);
@@ -1480,6 +1494,10 @@ function buildShareableDashboardUrl() {
 
   const shareUrl = new URL(getShareRouteBaseUrl());
   const shareParams = new URLSearchParams();
+  const currentParams = new URLSearchParams(window.location.search);
+  if (currentParams.get("standalone") === "1") {
+    shareParams.set("standalone", "1");
+  }
 
   const finalizeShareUrl = () => {
     shareParams.forEach((value, key) => {
@@ -1544,6 +1562,9 @@ function readFiltersFromUrl() {
     if (Array.isArray(decoded.i)) {
       prefs.identityTags = decoded.i;
     }
+    if (decoded.r === "l" || decoded.r === "f") {
+      prefs.runtimeMode = decoded.r === "l" ? "lite" : "full";
+    }
     if (typeof decoded.q === "string") {
       prefs.topExposureAddressQuery = decoded.q;
     }
@@ -1592,6 +1613,8 @@ function readFiltersFromUrl() {
     "show",
     "topCollapsed",
     "detailsCollapsed",
+    "runtimeMode",
+    "runtime",
     "snapshot",
   ].some((key) => params.has(key));
 
@@ -1647,6 +1670,13 @@ function readFiltersFromUrl() {
   const panel = params.get("view") || params.get("panel");
   if (panel === "bars" || panel === "historical") {
     prefs.scriptPanelMode = panel;
+  }
+
+  const runtimeMode = String(params.get("runtimeMode") || params.get("runtime") || "").toLowerCase();
+  if (["eco", "lite"].includes(runtimeMode)) {
+    prefs.runtimeMode = "lite";
+  } else if (runtimeMode === "full") {
+    prefs.runtimeMode = "full";
   }
 
   const show = params.get("show");
