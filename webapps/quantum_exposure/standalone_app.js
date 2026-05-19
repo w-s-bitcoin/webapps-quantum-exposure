@@ -3,7 +3,7 @@
   const IMAGE_LIST_URL = "assets/image_list.json";
   const DASHBOARD_URL = "webapps/quantum_exposure/dashboard.html";
   const FAVORITES_STORAGE_KEY = "favorites";
-  const MODAL_NAV_SNAPSHOT_KEY = "wsb_modal_nav_snapshot_v1";
+  const MODAL_NAV_SNAPSHOT_KEY = "wsb_modal_nav_snapshot_v2";
   const GRID_FOCUS_RESTORE_KEY = "wsb_pending_grid_focus_filename_v1";
   const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
   const IS_LOCAL_HOST = LOCAL_HOSTS.has(String(location.hostname || "").toLowerCase());
@@ -153,7 +153,7 @@
   function getStandalonePath() {
     const base = getPageBasePath();
     const path = IS_LOCAL_HOST
-      ? `${base}/webapps/quantum_exposure/dashboard.html?standalone=1`
+      ? `${base}/quantum_exposure.html`
       : `${base}/quantum_exposure`;
     return normalizeJoinedPath(path);
   }
@@ -169,16 +169,19 @@
   function getMainRouteUrl(filename) {
     const slug = slugFromFilename(filename);
     const localStandaloneBySlug = {
-      quantum_exposure: 'webapps/quantum_exposure/dashboard.html?standalone=1',
+      quantum_exposure: 'quantum_exposure.html',
       bip110_signaling: 'bip110_signaling.html',
       dca_cost_basis: 'dca_cost_basis.html',
+      dca_comparison: 'dca_comparison.html',
       node_count: 'node_count.html',
       bitcoin_dominance: 'bitcoin_dominance.html',
+      bitcoin_net_worth: 'bitcoin_net_worth.html',
+      uoa: 'uoa.html',
     };
 
     if (slug === "quantum_exposure") {
       if (IS_LOCAL_HOST) {
-        return normalizeJoinedPath(`${getPageBasePath()}/webapps/quantum_exposure/dashboard.html?standalone=1`);
+        return normalizeJoinedPath(`${getPageBasePath()}/quantum_exposure.html`);
       }
       return getStandalonePath();
     }
