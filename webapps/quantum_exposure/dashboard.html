@@ -318,8 +318,7 @@
     }
 
     .snapshot-report-btn:focus-visible {
-      outline: 2px solid color-mix(in srgb, var(--accent) 65%, white 35%);
-      outline-offset: 2px;
+      outline: none;
     }
 
     .top-filters {
@@ -353,10 +352,11 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
+      gap: 5px;
+      min-height: 30px;
       width: 132px;
       min-width: 132px;
-      padding: 8px 12px;
+      padding: 5px 9px;
       border-radius: 999px;
       border: 1px solid #cf5c5c;
       background: transparent;
@@ -379,10 +379,11 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
+      gap: 5px;
+      min-height: 30px;
       width: 96px;
       min-width: 96px;
-      padding: 8px 12px;
+      padding: 5px 9px;
       border-radius: 999px;
       border: 1px solid var(--panel-border);
       background: var(--surface);
@@ -1459,7 +1460,7 @@
     .panel-title-main .info-popover {
       left: 0;
       right: auto;
-      z-index: 40;
+      z-index: 1000;
       width: min(420px, calc(100vw - 36px));
       max-width: min(420px, calc(100vw - 36px));
       font-family: "IBM Plex Mono", monospace;
@@ -2471,8 +2472,7 @@
     input:focus-visible,
     select:focus-visible {
       outline: none;
-      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
-      border-color: var(--accent);
+      box-shadow: none;
     }
 
     @media (max-width: 1080px) {
@@ -3102,11 +3102,10 @@
               <button type="button" class="info-btn" aria-label="About this dashboard" aria-describedby="quantumExposureInfoPopover">?</button>
               <div class="info-popover" id="quantumExposureInfoPopover" role="tooltip">
                 <p style="margin: 0;">
-                  This dashboard estimates how much Bitcoin supply is exposed to quantum-risk pathways, and who controls that exposure, at a selected block-height snapshot. It combines chain-derived aggregates with attribution metadata to show both macro risk (total exposed supply, exposed pubkeys/UTXOs, migration pressure) and micro concentration (largest exposed entities/addresses).
+                  This dashboard estimates how much Bitcoin supply is exposed to quantum-risk spending paths at a selected block-height snapshot.
                 </p>
-                <p style="margin: 8px 0 0 0;">
-                  What "quantum exposure" means here<br>
-                  Supply is treated as exposed when spending conditions reveal public key material or otherwise create script paths considered vulnerable under a future cryptographically relevant quantum threat model. The dashboard does not predict when such a threat arrives; it quantifies current and historical exposure surfaces under consistent rules.
+                <p style="margin: 6px 0 0 0;">
+                  It combines chain-derived aggregates with attribution metadata to show exposed supply, exposed pubkeys/UTXOs, estimated migration pressure, and the largest exposed entities or addresses.
                 </p>
               </div>
             </div>
@@ -3479,6 +3478,10 @@
     </section>
   </div>
 
+  <script>
+    window.WSBWebappDataAutoRefresh = { urls: ["webapp_data/latest_snapshot.txt"] };
+  </script>
+  <script src="../shared/webapp_data_auto_refresh.js"></script>
   <script src="dashboard_app.js"></script>
 </body>
 </html>
